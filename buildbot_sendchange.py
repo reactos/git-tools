@@ -1,47 +1,70 @@
-#!/usr/bin/python3
+#!/usr/bin/env python
 #
-# buildbot_sendchange.py - Inform BuildBot about this commit
-# Written by Colin Finck <colin@reactos.org>
+# PROJECT:     buildbot_sendchange.py
+# LICENSE:     GPL-2.0 (https://spdx.org/licenses/GPL-2.0)
+# PURPOSE:     Inform BuildBot about Git commits and perform ReactOS-specific categorizing
+# COPYRIGHT:   Copyright 2007-2017 BuildBot Contributors
+#              Copyright 2017 Colin Finck (colin@reactos.org)
 #
-# Inspired by https://github.com/buildbot/buildbot/blob/master/master/contrib/svn_buildbot.py
+# Largely based on https://github.com/buildbot/buildbot-contrib/blob/9df6a1b6dae44eecbd56ed5d6d7ac6952d39066e/master/contrib/git_buildbot.py
 # but uses "buildbot sendchange" instead to do ReactOS-specific categorizing
 #
 
-"""
-buildbot_sendchange.py <REV>
-"""
-
+import os
+import re
 import subprocess
 import sys
 
-# Get the arguments
-if len(sys.argv) != 2:
-    print(__doc__)
-    exit(1)
-
 master = "localhost:9990"
-repo = "/srv/svn/reactos"
-rev = sys.argv[1]
+repo = "git://git.reactos.org/reactos.git"
 
-# Get the changed files, remove 4 columns of status information
-changed = subprocess.getoutput("svnlook changed -r %s %s" % (rev, repo)).split("\n")
-changed = [x[4:] for x in changed]
+while True:
+    # Read oldrev, newrev, ref from stdin like every other Git post-receive hook
+    line = sys.stdin.readline()
+    line = line.rstrip()
+    if not line:
+        break
 
-# Get other commit information
-author = subprocess.getoutput("svnlook author -r %s %s" % (rev, repo))
-log = subprocess.getoutput("svnlook log -r %s %s" % (rev, repo))
+    [oldrev, newrev, ref] = line.split(None, 2)
 
-# Filter the files and set category
-category_arg = ""
-files = ""
+    # Only send changes to the master branch to BuildBot
+    if ref != "refs/heads/master":
+        continue
 
-for f in changed:
-    if f.startswith("trunk/reactos") or f.startswith("trunk/rostests"):
-        files += '"' + f + '" '
-        if f.startswith("trunk/rostests"):
-            category_arg = "--category rostests"
+    # Get commit information
+    f = os.popen("git show --raw --pretty=full %s" % rev, "r")
+    files = []
+    comments = []
 
-# Pass all this information to "buildbot sendchange"
-if files:
-    p = subprocess.Popen("buildbot sendchange %s --logfile - --master %s --repository %s --revision %s --who %s --vc svn %s" % (category_arg, master, repo, rev, author, files), stdin=subprocess.PIPE, shell=True)
-    p.communicate(input=log.encode())
+    while True:
+        line = f.readline()
+        if not line:
+            break
+
+        if line.startswith(4 * ' '):
+            comments.append(line[4:]
+            continue
+
+        m = re.match(r"^:.*[MAD]\s+(.+)$", line)
+        if m:
+            files.append(text_type(m.group(1), encoding=encoding))
+            continue
+
+        m = re.match(r"^Author:\s+(.+)$", line)
+        if m:
+            author = text_type(m.group(1), encoding=encoding)
+            continue
+
+    f.close()
+    log = ''.join(comments)
+
+    # Prepare the category and files arguments
+    category_arg = ""
+    files_arg = ' '.join('"{0}"'.format(w) for w in files)
+    if "/rostests/" in files_arg:
+        category_arg = "--category rostests"
+
+    # Pass all this information to "buildbot sendchange"
+    if files_arg:
+        p = subprocess.Popen("buildbot sendchange %s --logfile - --master %s --repository %s --revision %s --who %s --vc git %s" % (category_arg, master, repo, newrev, author, files_arg), stdin=subprocess.PIPE, shell=True)
+        p.communicate(input=log.encode())
