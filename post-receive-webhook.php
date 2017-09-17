@@ -11,7 +11,8 @@
 		die("TLS required");
 
 	// Verify that all necessary environment variables are set.
-	if (!array_key_exists("GIT_MIRROR_DIR", $_ENV) || !array_key_exists("GITHUB_SECRET", $_ENV))
+	// Using Apache's SetEnv, they appear in the $_SERVER array.
+	if (!array_key_exists("GIT_PROJECT_ROOT", $_SERVER) || !array_key_exists("GITHUB_SECRET", $_SERVER))
 		die("Environment variables not set");
 
 	// Verify the signature format.
@@ -22,13 +23,13 @@
 	$http_signature = substr($_SERVER["HTTP_X_HUB_SIGNATURE"], 5);
 
 	$post_data = file_get_contents("php://input");
-	$valid_signature = hash_hmac("sha1", $post_data, $_ENV["GITHUB_SECRET"]);
+	$valid_signature = hash_hmac("sha1", $post_data, $_SERVER["GITHUB_SECRET"]);
 
 	if (!hash_equals($valid_signature, $http_signature))
 		die("Invalid signature");
 
 	// Verify the event.
-	if (!array_key_exists("HTTP_X_GITHUB_EVENT", $_SERVER)
+	if (!array_key_exists("HTTP_X_GITHUB_EVENT", $_SERVER))
 		die("No event");
 
 	// Respond to a ping event without doing anything else.
@@ -45,7 +46,7 @@
 		die("Invalid payload");
 
 	// Update the mirror repository.
-	chdir($_ENV["GIT_MIRROR_DIR"]);
+	chdir($_SERVER["GIT_PROJECT_ROOT"] . "/" . $payload->repository->name . ".git");
 	$pp = popen("git pull &> /dev/null", "w");
 	$exit_code = pclose($pp);
 	if ($exit_code != 0)
