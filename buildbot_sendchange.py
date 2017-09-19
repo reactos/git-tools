@@ -10,7 +10,6 @@
 # but uses "buildbot sendchange" instead to do ReactOS-specific categorizing
 #
 
-import os
 import re
 import subprocess
 import sys
@@ -18,53 +17,47 @@ import sys
 master = "localhost:9990"
 repo = "git://git.reactos.org/reactos.git"
 
-while True:
-    # Read oldrev, newrev, ref from stdin like every other Git post-receive hook
-    line = sys.stdin.readline()
-    line = line.rstrip()
-    if not line:
-        break
-
-    [oldrev, newrev, ref] = line.split(None, 2)
+# Read oldrev, newrev, ref from stdin like every other Git post-receive hook
+for hookinput in sys.stdin:
+    [oldrev, newrev, ref] = hookinput.rstrip().split(None, 2)
 
     # Only send changes to the master branch to BuildBot
     if ref != "refs/heads/master":
         continue
 
-    # Get commit information
-    f = os.popen("git show --raw --pretty=full %s" % rev, "r")
-    files = []
-    comments = []
+    # Report all changes between oldrev and newrev
+    revlist_pipe = subprocess.Popen("git rev-list --reverse %s..%s" % (oldrev, newrev), stdout=subprocess.PIPE)
+    for revhash in revlist_pipe.stdout:
+        revhash = revhash.rstrip()
 
-    while True:
-        line = f.readline()
-        if not line:
-            break
+        show_pipe = subprocess.Popen("git show --raw --pretty=full %s" % revhash, stdout=subprocess.PIPE)
+        files = []
+        comments = []
 
-        if line.startswith(4 * ' '):
-            comments.append(line[4:]
-            continue
+        for line in show_pipe.stdout:
+            if line.startswith(4 * ' '):
+                comments.append(line[4:])
+                continue
 
-        m = re.match(r"^:.*[MAD]\s+(.+)$", line)
-        if m:
-            files.append(text_type(m.group(1), encoding=encoding))
-            continue
+            m = re.match(r"^:.*[MAD]\s+(.+)$", line)
+            if m:
+                files.append(text_type(m.group(1), encoding=encoding))
+                continue
 
-        m = re.match(r"^Author:\s+(.+)$", line)
-        if m:
-            author = text_type(m.group(1), encoding=encoding)
-            continue
+            m = re.match(r"^Author:\s+(.+)$", line)
+            if m:
+                author = text_type(m.group(1), encoding=encoding)
+                continue
 
-    f.close()
-    log = ''.join(comments)
+        log = ''.join(comments)
 
-    # Prepare the category and files arguments
-    category_arg = ""
-    files_arg = ' '.join('"{0}"'.format(w) for w in files)
-    if "/rostests/" in files_arg:
-        category_arg = "--category rostests"
+        # Prepare the category and files arguments
+        category_arg = ""
+        files_arg = ' '.join('"{0}"'.format(w) for w in files)
+        if "/rostests/" in files_arg:
+            category_arg = "--category rostests"
 
-    # Pass all this information to "buildbot sendchange"
-    if files_arg:
-        p = subprocess.Popen("buildbot sendchange %s --logfile - --master %s --repository %s --revision %s --who %s --vc git %s" % (category_arg, master, repo, newrev, author, files_arg), stdin=subprocess.PIPE, shell=True)
-        p.communicate(input=log.encode())
+        # Pass all this information to "buildbot sendchange"
+        if files_arg:
+            p = subprocess.Popen("buildbot sendchange %s --logfile - --master %s --repository %s --revision %s --who %s --vc git %s" % (category_arg, master, repo, revhash, author, files_arg), stdin=subprocess.PIPE)
+            p.communicate(input=log.encode())
