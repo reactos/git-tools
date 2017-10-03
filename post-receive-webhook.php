@@ -53,7 +53,7 @@
 		die("git remote update exited with code {$exit_code}");
 
 	// Call the post-receive hook.
-	$pp = popen("hooks/post-receive &> /dev/null", "w");
+	$pp = popen("hooks/post-receive 1> /dev/null 2>&1", "w");
 	fwrite($pp, $payload->before . " " . $payload->after . " " . $payload->ref . "\n");
 	$exit_code = pclose($pp);
 	if ($exit_code != 0)
