@@ -47,7 +47,7 @@
 
 	// Update the mirror repository.
 	chdir($_SERVER["GIT_PROJECT_ROOT"] . "/" . $payload->repository->name . ".git");
-	$pp = popen("git remote update &> /dev/null", "w");
+	$pp = popen("git remote update 1> /var/log/post-receive-webhook/git-remote-update.log 2>&1", "w");
 	$exit_code = pclose($pp);
 	if ($exit_code != 0)
 		die("git remote update exited with code {$exit_code}");
