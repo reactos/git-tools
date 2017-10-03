@@ -26,11 +26,11 @@ for hookinput in sys.stdin:
         continue
 
     # Report all changes between oldrev and newrev
-    revlist_pipe = subprocess.Popen("git rev-list --reverse %s..%s" % (oldrev, newrev), stdout=subprocess.PIPE)
+    revlist_pipe = subprocess.Popen("git rev-list --reverse %s..%s" % (oldrev, newrev), stdout=subprocess.PIPE, shell=True)
     for revhash in revlist_pipe.stdout:
         revhash = revhash.rstrip()
 
-        show_pipe = subprocess.Popen("git show --raw --pretty=full %s" % revhash, stdout=subprocess.PIPE)
+        show_pipe = subprocess.Popen("git show --raw --pretty=full %s" % revhash, stdout=subprocess.PIPE, shell=True)
         files = []
         comments = []
 
@@ -41,12 +41,12 @@ for hookinput in sys.stdin:
 
             m = re.match(r"^:.*[MAD]\s+(.+)$", line)
             if m:
-                files.append(text_type(m.group(1), encoding=encoding))
+                files.append(m.group(1))
                 continue
 
             m = re.match(r"^Author:\s+(.+)$", line)
             if m:
-                author = text_type(m.group(1), encoding=encoding)
+                author = m.group(1)
                 continue
 
         log = ''.join(comments)
@@ -59,5 +59,5 @@ for hookinput in sys.stdin:
 
         # Pass all this information to "buildbot sendchange"
         if files_arg:
-            p = subprocess.Popen("buildbot sendchange %s --logfile - --master %s --repository %s --revision %s --who %s --vc git %s" % (category_arg, master, repo, revhash, author, files_arg), stdin=subprocess.PIPE)
+            p = subprocess.Popen('buildbot sendchange %s --logfile - --master %s --repository %s --revision %s --who "%s" --vc git %s' % (category_arg, master, repo, revhash, author, files_arg), stdin=subprocess.PIPE, shell=True)
             p.communicate(input=log.encode())
