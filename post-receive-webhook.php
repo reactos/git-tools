@@ -47,10 +47,10 @@
 
 	// Update the mirror repository.
 	chdir($_SERVER["GIT_PROJECT_ROOT"] . "/" . $payload->repository->name . ".git");
-	$pp = popen("git pull &> /dev/null", "w");
+	$pp = popen("git remote update &> /dev/null", "w");
 	$exit_code = pclose($pp);
 	if ($exit_code != 0)
-		die("git pull exited with code {$exit_code}");
+		die("git remote update exited with code {$exit_code}");
 
 	// Call the post-receive hook.
 	$pp = popen("hooks/post-receive &> /dev/null", "w");
