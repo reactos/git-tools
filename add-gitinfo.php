@@ -1,5 +1,12 @@
 #!/usr/bin/php
 <?php
+/*
+ * PROJECT:     ReactOS Website
+ * LICENSE:     GPL-2.0+ (https://spdx.org/licenses/GPL-2.0+)
+ * PURPOSE:     Populates the GitInfo database with information about commits to the master branch
+ * COPYRIGHT:   Copyright 2017 Colin Finck (colin@reactos.org)
+ */
+
 	// Configuration
 	define("DB_HOST", "localhost");
 	define("DB_USER", "gitinfo_writer");
@@ -68,10 +75,10 @@
 				break;
 
 			// Get commit information for it.
-			$author_name = `git show -s --format=%an $newrev`;
-			$author_email = `git show -s --format=%ae $newrev`;
-			$commit_timestamp = `git show -s --format=%ct $newrev`;
-			$message = `git show -s --format=%B $newrev`;
+			$author_name = trim(`git show -s --format=%an $newrev`);
+			$author_email = trim(`git show -s --format=%ae $newrev`);
+			$commit_timestamp = trim(`git show -s --format=%ct $newrev`);
+			$message = trim(`git show -s --format=%B $newrev`);
 
 			// Insert this into the master_revisions table and delete it from the todo table.
 			$insert_stmt->execute();
