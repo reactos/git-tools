@@ -32,32 +32,100 @@
 	if (!array_key_exists("HTTP_X_GITHUB_EVENT", $_SERVER))
 		die("No event");
 
-	// Respond to a ping event without doing anything else.
-	if ($_SERVER["HTTP_X_GITHUB_EVENT"] == "ping")
+	$event = $_SERVER["HTTP_X_GITHUB_EVENT"];
+
+	// Check for the event.
+	if ($event == "ping")
+	{
+		// ping is for testing and we only want to return a pong here.
 		die("pong");
+	}
+	else if ($event == "pull_request" || $event == "push")
+	{
+		// Parse the JSON payload.
+		$payload = json_decode($_POST["payload"]);
+		if ($payload === NULL)
+			die("Invalid payload");
 
-	// Only handle "push" events from here onwards.
-	if ($_SERVER["HTTP_X_GITHUB_EVENT"] != "push")
+		// Verify the supplied repository name.
+		$repo = $payload->repository->name;
+		$repopath = $_SERVER["GIT_PROJECT_ROOT"] . "/{$repo}.git";
+		if (!is_dir($repopath))
+			die("Invalid repo: {$repo}");
+
+		// The following code should not be run concurrently.
+		// Therefore, make sure that no previous instance of this script is still running.
+		$lockfile = "/var/log/post-receive-webhook/{$repo}/post-receive-webhook-lock";
+		while (file_exists($lockfile))
+			sleep(5);
+
+		///// BEGIN OF CRITICAL SECTION /////
+		touch($lockfile);
+
+		// Clear the mirror logfile.
+		$logfile = "/var/log/post-receive-webhook/{$repo}/git-remote-update.log";
+		file_put_contents($logfile, "");
+
+		// Update the mirror repository.
+		chdir($_SERVER["GIT_PROJECT_ROOT"] . "/{$repo}.git");
+		$exit_code = 0;
+
+		for ($i = 0; $i < 5; $i++)
+		{
+			// Write into the logfile about this attempt.
+			$fp = fopen($logfile, "a");
+
+			if ($exit_code != 0)
+				fwrite($fp, "git remote update exited with code {$exit_code}\n\n");
+
+			fwrite($fp, "================ ATTEMPT {$i} ================\n");
+			fclose($fp);
+
+			// Run "git remote update".
+			$pp = popen("git remote update 1>> {$logfile} 2>&1", "w");
+			$exit_code = pclose($pp);
+			if ($exit_code == 0)
+				break;
+
+			// Wait 3 seconds before trying it another time.
+			sleep(3);
+		}
+
+		// Load the queue.
+		$queuefile = "/var/log/post-receive-webhook/{$repo}/queue";
+		$queue = unserialize(file_get_contents($queuefile));
+		if (!is_array($queue))
+			$queue = array();
+
+		// If this is a push event, we want to enqueue information for the post-receive hook.
+		if ($event == "push")
+			$queue[] = array($payload->before, $payload->after, $payload->ref);
+
+		// Check if "git remote update" above has succeeded.
+		if ($i < 5)
+		{
+			// Call the post-receive hook for all queued updates.
+			foreach ($queue as $u)
+			{
+				$pp = popen("hooks/post-receive 1> /dev/null 2>&1", "w");
+				fwrite($pp, $u[0] . " " . $u[1] . " " . $u[2] . "\n");
+				pclose($pp);
+			}
+
+			// All done.
+			$queue = array();
+			echo "OK";
+		}
+		else
+		{
+			echo "git remote update failed";
+		}
+
+		file_put_contents($queuefile, serialize($queue));
+		unlink($lockfile);
+		///// END OF CRITICAL SECTION /////
+	}
+	else
+	{
 		die("Wrong event");
-
-	// Parse the JSON payload.
-	$payload = json_decode($_POST["payload"]);
-	if ($payload === NULL)
-		die("Invalid payload");
-
-	// Update the mirror repository.
-	chdir($_SERVER["GIT_PROJECT_ROOT"] . "/" . $payload->repository->name . ".git");
-	$pp = popen("git remote update 1> /var/log/post-receive-webhook/git-remote-update.log 2>&1", "w");
-	$exit_code = pclose($pp);
-	if ($exit_code != 0)
-		die("git remote update exited with code {$exit_code}");
-
-	// Call the post-receive hook.
-	$pp = popen("hooks/post-receive 1> /dev/null 2>&1", "w");
-	fwrite($pp, $payload->before . " " . $payload->after . " " . $payload->ref . "\n");
-	$exit_code = pclose($pp);
-	if ($exit_code != 0)
-		die("post-receive hook exited with code {$exit_code}");
-
-	// All done!
-	die("OK");
+	}
