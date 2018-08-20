@@ -58,9 +58,9 @@
 		$arguments = [$repo, $repopath, $event];
 		if ($event == "push")
 		{
-			$arguments[] = $payload_before;
-			$arguments[] = $payload_after;
-			$arguments[] = $payload_ref;
+			$arguments[] = $payload->before;
+			$arguments[] = $payload->after;
+			$arguments[] = $payload->ref;
 		}
 
 		$argument_string = implode(" ", $arguments);
