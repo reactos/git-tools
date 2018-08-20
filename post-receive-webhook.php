@@ -2,8 +2,8 @@
 /*
  * PROJECT:     ReactOS GitHub Web Hook
  * LICENSE:     GPL-2.0+ (https://spdx.org/licenses/GPL-2.0+)
- * PURPOSE:     Updates the mirror repository and calls the post-receive hook just like Git would do if the commit was pushed to the mirror repository.
- * COPYRIGHT:   Copyright 2017 Colin Finck (colin@reactos.org)
+ * PURPOSE:     Validates a GitHub webhook request and spawns a subprocess to handle it asynchronously.
+ * COPYRIGHT:   Copyright 2017-2018 Colin Finck (colin@reactos.org)
  */
 
 	// This must be run exclusively with HTTPS security enabled!
@@ -53,77 +53,20 @@
 		if (!is_dir($repopath))
 			die("Invalid repo: {$repo}");
 
-		// The following code should not be run concurrently.
-		// Therefore, make sure that no previous instance of this script is still running.
-		$lockfile = "/var/log/post-receive-webhook/{$repo}/post-receive-webhook-lock";
-		while (file_exists($lockfile))
-			sleep(5);
-
-		///// BEGIN OF CRITICAL SECTION /////
-		touch($lockfile);
-
-		// Clear the mirror logfile.
-		$logfile = "/var/log/post-receive-webhook/{$repo}/git-remote-update.log";
-		file_put_contents($logfile, "");
-
-		// Update the mirror repository.
-		chdir($_SERVER["GIT_PROJECT_ROOT"] . "/{$repo}.git");
-		$exit_code = 0;
-
-		for ($i = 0; $i < 5; $i++)
-		{
-			// Write into the logfile about this attempt.
-			$fp = fopen($logfile, "a");
-
-			if ($exit_code != 0)
-				fwrite($fp, "git remote update exited with code {$exit_code}\n\n");
-
-			fwrite($fp, "================ ATTEMPT {$i} ================\n");
-			fclose($fp);
-
-			// Run "git remote update".
-			$pp = popen("git remote update 1>> {$logfile} 2>&1", "w");
-			$exit_code = pclose($pp);
-			if ($exit_code == 0)
-				break;
-
-			// Wait 3 seconds before trying it another time.
-			sleep(3);
-		}
-
-		// Load the queue.
-		$queuefile = "/var/log/post-receive-webhook/{$repo}/queue";
-		$queue = unserialize(file_get_contents($queuefile));
-		if (!is_array($queue))
-			$queue = array();
-
-		// If this is a push event, we want to enqueue information for the post-receive hook.
+		// Process the request asynchronously in a subprocess to return to GitHub early.
+		// Otherwise, we risk a "Service Timeout" (GitHub only waits 10 seconds for a webhook to complete).
+		$arguments = [$repo, $repopath, $event];
 		if ($event == "push")
-			$queue[] = array($payload->before, $payload->after, $payload->ref);
-
-		// Check if "git remote update" above has succeeded.
-		if ($i < 5)
 		{
-			// Call the post-receive hook for all queued updates.
-			foreach ($queue as $u)
-			{
-				$pp = popen("hooks/post-receive 1> /dev/null 2>&1", "w");
-				fwrite($pp, $u[0] . " " . $u[1] . " " . $u[2] . "\n");
-				pclose($pp);
-			}
-
-			// All done.
-			$queue = array();
-			echo "OK";
-		}
-		else
-		{
-			echo "git remote update failed";
+			$arguments[] = $payload_before;
+			$arguments[] = $payload_after;
+			$arguments[] = $payload_ref;
 		}
 
-		file_put_contents($queuefile, serialize($queue));
-		unlink($lockfile);
-		///// END OF CRITICAL SECTION /////
+		$argument_string = implode(" ", $arguments);
+
+		shell_exec(__DIR__ . "/post-receive-webhook-worker.php {$argument_string} 1> /var/log/post-receive-webhook/{$repo}/worker.log 2>&1 &");
+		die("Spawned subprocess");
 	}
 	else
 	{
