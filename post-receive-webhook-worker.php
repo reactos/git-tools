@@ -1,3 +1,4 @@
+#!/usr/bin/php
 <?php
 /*
  * PROJECT:     ReactOS GitHub Web Hook
