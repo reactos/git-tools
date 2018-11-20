@@ -4,7 +4,7 @@
 # LICENSE:     GPL-2.0 (https://spdx.org/licenses/GPL-2.0)
 # PURPOSE:     Inform BuildBot about Git commits and perform ReactOS-specific categorizing
 # COPYRIGHT:   Copyright 2007-2017 BuildBot Contributors
-#              Copyright 2017 Colin Finck (colin@reactos.org)
+#              Copyright 2017-2018 Colin Finck (colin@reactos.org)
 #
 # Largely based on https://github.com/buildbot/buildbot-contrib/blob/9df6a1b6dae44eecbd56ed5d6d7ac6952d39066e/master/contrib/git_buildbot.py
 # but uses "buildbot sendchange" instead to do ReactOS-specific categorizing
@@ -15,7 +15,7 @@ import subprocess
 import sys
 
 master = "localhost:9990"
-repo = "git://git.reactos.org/reactos.git"
+repo = "https://git.reactos.org/reactos.git"
 
 # Read oldrev, newrev, ref from stdin like every other Git post-receive hook
 for hookinput in sys.stdin:
