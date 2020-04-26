@@ -22,13 +22,14 @@ for hookinput in sys.stdin:
     [oldrev, newrev, ref] = hookinput.rstrip().split(None, 2)
 
     # Report all changes between oldrev and newrev
-    revlist_pipe = subprocess.Popen('git rev-list --reverse {}..{}'.format(oldrev, newrev), stdout=subprocess.PIPE)
+    revlist_pipe = subprocess.Popen(['git', 'rev-list', '--reverse', '{}..{}'.format(oldrev, newrev)], stdout=subprocess.PIPE)
     for revhash in revlist_pipe.stdout:
         revhash = revhash.decode('utf-8').rstrip()
 
-        show_pipe = subprocess.Popen('git show --raw --pretty=full {}'.format(revhash), stdout=subprocess.PIPE)
+        show_pipe = subprocess.Popen(['git', 'show', '--raw', '--pretty=full', revhash], stdout=subprocess.PIPE)
         files = []
         comments = []
+        has_rostests = False
 
         for line in show_pipe.stdout:
             line = line.decode('utf-8')
@@ -40,6 +41,10 @@ for hookinput in sys.stdin:
             m = re.match(r"^:.*[MAD]\s+(.+)$", line)
             if m:
                 files.append(m.group(1))
+
+                if '/rostests/' in m.group(1):
+                    has_rostests = True
+
                 continue
 
             m = re.match(r"^Author:\s+([^!\"#$%&'*\/:;?\\^`]+)$", line)
@@ -47,23 +52,26 @@ for hookinput in sys.stdin:
                 author = m.group(1)
                 continue
 
-        files_arg = ' '.join('"{}"'.format(w) for w in files)
+        if len(files) == 0:
+            continue
+
+        cmd = [
+            '/srv/buildbot/master_env/bin/buildbot', 'sendchange',
+            '--branch', 'master',
+            '--logfile', '-',
+            '--master', master,
+            '--repository', repo,
+            '--revision', revhash,
+            '--who', author,
+            '--vc', 'git'
+        ]
+
+        if has_rostests:
+            cmd.extend(['--category', 'rostests'])
+
+        cmd.extend(files)
         log = ''.join(comments)
 
-        # Prepare the category and files arguments
-        category_arg = ''
-        if '/rostests/' in files_arg:
-            category_arg = '--category rostests'
-
         # Pass all this information to "buildbot sendchange"
-        if files_arg:
-            p = subprocess.Popen(
-                '/srv/buildbot/master_env/bin/buildbot sendchange {} --branch master --logfile - --master {} --repository {} --revision {} --who "{}" --vc git {}'.format(
-                    category_arg,
-                    master,
-                    repo,
-                    revhash,
-                    author,
-                    files_arg
-                ), stdin=subprocess.PIPE, encoding='utf-8')
-            p.communicate(input=log.encode('utf-8'))
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, encoding='utf-8')
+        p.communicate(input=log.encode('utf-8'))
