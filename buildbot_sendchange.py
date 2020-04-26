@@ -40,16 +40,17 @@ for hookinput in sys.stdin:
 
             m = re.match(r"^:.*[MAD]\s+(.+)$", line)
             if m:
-                files.append(m.group(1))
+                file = m.group(1).rstrip()
+                files.append(file)
 
-                if '/rostests/' in m.group(1):
+                if '/rostests/' in file:
                     has_rostests = True
 
                 continue
 
             m = re.match(r"^Author:\s+([^!\"#$%&'*\/:;?\\^`]+)$", line)
             if m:
-                author = m.group(1)
+                author = m.group(1).rstrip()
                 continue
 
         if len(files) == 0:
