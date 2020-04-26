@@ -74,4 +74,4 @@ for hookinput in sys.stdin:
 
         # Pass all this information to "buildbot sendchange"
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE, encoding='utf-8')
-        p.communicate(input=log.encode('utf-8'))
+        p.communicate(input)
