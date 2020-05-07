@@ -58,7 +58,7 @@ for hookinput in sys.stdin:
 
         cmd = [
             '/srv/buildbot/master_env/bin/buildbot', 'sendchange',
-            '--branch', 'master',
+            '--branch', ref,
             '--logfile', '-',
             '--master', master,
             '--repository', repo,
